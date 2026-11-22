@@ -10,6 +10,16 @@
   <aside id="sidebar">
     <header>
       <h1>قنوات</h1>
+      <div class="upload-bar">
+        <label for="file-input" class="btn">رفع ملف M3U</label>
+        <input type="file" id="file-input" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl">
+        <button type="button" id="toggle-url" class="btn btn-ghost">من رابط</button>
+      </div>
+      <form class="url-form" id="url-form" hidden>
+        <input type="url" id="url-input" placeholder="https://example.com/list.m3u" required>
+        <button type="submit" class="btn">جلب</button>
+      </form>
+      <div id="upload-status" aria-live="polite"></div>
       <input id="search" type="search" placeholder="ابحث عن قناة…" aria-label="بحث">
     </header>
     <nav id="groups" aria-label="التصنيفات"></nav>

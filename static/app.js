@@ -4,16 +4,24 @@
   const searchEl = document.getElementById('search');
   const player = document.getElementById('player');
   const nowPlaying = document.getElementById('now-playing');
+  const fileInput = document.getElementById('file-input');
+  const toggleUrl = document.getElementById('toggle-url');
+  const urlForm = document.getElementById('url-form');
+  const urlInput = document.getElementById('url-input');
+  const uploadStatus = document.getElementById('upload-status');
+
+  const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
   let hls = null;
   let channels = [];
   let activeGroup = 'all';
   let activeUrl = null;
 
-  async function load() {
+  async function fetchChannels() {
     const res = await fetch('/api/channels');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     channels = await res.json();
+    activeGroup = 'all';
     renderGroups();
     render();
   }
@@ -63,7 +71,9 @@
     if (!items.length) {
       const li = document.createElement('li');
       li.className = 'empty';
-      li.textContent = 'لا توجد قنوات تطابق البحث.';
+      li.textContent = channels.length
+        ? 'لا توجد قنوات تطابق البحث.'
+        : 'لم يتم تحميل أي قناة بعد. ارفع ملف M3U أو أدخل رابطاً.';
       listEl.appendChild(li);
     }
   }
@@ -72,9 +82,9 @@
     nowPlaying.textContent = channel.name || '';
     activeUrl = channel.url;
     document.querySelectorAll('.channel').forEach(el => el.classList.remove('playing'));
-    const clicked = [...document.querySelectorAll('.channel span')]
+    const current = [...document.querySelectorAll('.channel span')]
       .find(s => s.textContent === (channel.name || '(بدون اسم)'));
-    if (clicked && clicked.parentElement) clicked.parentElement.classList.add('playing');
+    if (current && current.parentElement) current.parentElement.classList.add('playing');
 
     if (hls) { hls.destroy(); hls = null; }
     const url = channel.url;
@@ -93,11 +103,73 @@
       nowPlaying.textContent = 'المتصفح لا يدعم تشغيل HLS.';
       return;
     }
-    player.play().catch(() => { /* autoplay may be blocked; user can press play */ });
+    player.play().catch(() => { /* autoplay may be blocked */ });
   }
 
+  async function uploadChannels(body, label) {
+    setStatus('جارٍ ' + label + '…', 'info');
+    let res;
+    try {
+      res = await fetch('/api/channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      setStatus('فشل الاتصال بالخادم: ' + err.message, 'error');
+      return;
+    }
+    let data = {};
+    try { data = await res.json(); } catch { /* ignore */ }
+    if (!res.ok) {
+      setStatus('فشل: ' + (data.error || ('HTTP ' + res.status)), 'error');
+      return;
+    }
+    setStatus('تم تحميل ' + data.count + ' قناة.', 'ok');
+    try { await fetchChannels(); } catch (err) {
+      setStatus('حُمّلت القائمة لكن تعذّر عرضها: ' + err.message, 'error');
+    }
+  }
+
+  function setStatus(msg, kind) {
+    uploadStatus.textContent = msg;
+    uploadStatus.className = 'status ' + (kind || '');
+  }
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setStatus('الملف كبير جداً (الحد الأقصى 10 ميغابايت).', 'error');
+      fileInput.value = '';
+      return;
+    }
+    let text;
+    try {
+      text = await file.text();
+    } catch (err) {
+      setStatus('تعذّر قراءة الملف: ' + err.message, 'error');
+      fileInput.value = '';
+      return;
+    }
+    await uploadChannels({ text }, 'قراءة الملف');
+    fileInput.value = '';
+  });
+
+  toggleUrl.addEventListener('click', () => {
+    urlForm.hidden = !urlForm.hidden;
+    if (!urlForm.hidden) urlInput.focus();
+  });
+
+  urlForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = urlInput.value.trim();
+    if (!url) return;
+    await uploadChannels({ url }, 'جلب الرابط');
+  });
+
   searchEl.addEventListener('input', render);
-  load().catch(err => {
-    nowPlaying.textContent = 'تعذّر تحميل القنوات: ' + err.message;
+  fetchChannels().catch(err => {
+    setStatus('تعذّر تحميل القنوات: ' + err.message, 'error');
   });
 })();
